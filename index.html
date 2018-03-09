@@ -1,0 +1,300 @@
+<!doctype html>
+<title>Parallel Axis Plot</title>
+
+<!-- SlickGrid -->
+<link rel="stylesheet" href="lib/slickgrid/slick.grid.css" type="text/css"/>
+<link rel="stylesheet" href="lib/slickgrid/jquery-ui-1.8.16.custom.css" type="text/css"/>
+<link rel="stylesheet" href="lib/slickgrid/examples.css" type="text/css"/>
+<link rel="stylesheet" href="lib/slickgrid/slick.pager.css" type="text/css"/>
+<script src="lib/slickgrid/jquery-1.7.min.js"></script>
+<script src="lib/slickgrid/jquery.event.drag-2.0.min.js"></script>
+<script src="lib/slickgrid/slick.core.js"></script>
+<script src="lib/slickgrid/slick.grid.js"></script>
+<script src="lib/slickgrid/slick.pager.js"></script>
+<script src="lib/slickgrid/slick.dataview.js"></script>
+<script src="colorbrewer.js"></script> 
+<script src="svgcanvas.js"></script>
+<!-- End SlickGrid -->
+
+<link rel="stylesheet" type="text/css" href="d3.parcoords.css">
+<link rel="stylesheet" type="text/css" href="style.css">
+<style>
+body, html {
+  margin: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  font-size: 12px;
+}
+#grid, #pager {
+  position: fixed;
+  width: 100%;
+}
+#grid {
+  bottom: 0;
+  height: 260px;
+}
+#pager {
+  bottom: 266px;
+  height: 20px;
+}
+.slick-row:hover {
+  font-weight: bold;
+  color: #069;
+}
+</style>
+<script src="lib/d3.min.js"></script>
+<script src="d3.parcoords.js"></script>
+<script src="lib/divgrid.js"></script>
+<div><font size='3'>Parallel axis interactive graph for multi dimensional data, by Bernardo Trindade and Jon Herman, modified from <a href="http://syntagmatic.github.io/parallel-coordinates/">http://syntagmatic.github.io/parallel-coordinates/</a>.<br>
+  <label for="sltBrushMode">Brush mode:</label>
+  <select id="sltBrushMode">
+  </select>
+  <label id="lblPredicate" for="sltPredicate">Predicate:</label>
+  <select id="sltPredicate">
+    <option>AND</option>
+    <option>OR</option>
+  </select>
+  <button id="btnReset">Reset Brushes</button>
+</div>
+<div id="instructions"><br>Select a csv file (only commas work, no spaces or tabs) to be plotted by clicking in the button below. </div></font>
+<input type="file" id="uploader">
+<div id="selectColors">
+<br>
+Select color scale:
+<select id="colormap">
+  <optgroup label="Colors by Cynthia Brewer.">
+    <option value="YlGn">YlGn</option>
+    <option value="YlGnBu">YlGnBu</option>
+    <option value="GnBu">GnBu</option>
+    <option value="BuGn">BuGn</option>
+    <option value="PuBuGn">PuBuGn</option>
+    <option value="PuBu">PuBu</option>
+    <option value="BuPu">BuPu</option>
+    <option value="RdPu">RdPu</option>
+    <option value="PuRd">PuRd</option>
+    <option value="OrRd">OrRd</option>
+    <option value="YlOrRd">YlOrRd</option>
+    <option value="YlOrBr">YlOrBr</option>
+    <option value="Purples">Purples</option>
+    <option value="Blues">Blues</option>
+    <option value="Greens">Greens</option>
+    <option value="Oranges">Oranges</option>
+    <option value="Reds">Reds</option>
+    <option value="Greys">Greys</option>
+    <option value="PuOr">PuOr</option>
+    <option value="BrBG">BrBG</option>
+    <option value="PRGn">PRGn</option>
+    <option value="PiYG">PiYG</option>
+    <option value="RdBu">RdBu</option>
+    <option value="RdGy">RdGy</option>
+    <option value="RdYlBu">RdYlBu</option>
+    <option value="Spectral">Spectral</option>
+    <option value="RdYlGn">RdYlGn</option>
+    <option value="Accent">Accent</option>
+    <option value="Dark2">Dark2</option>
+    <option value="Paired">Paired</option>
+    <option value="Pastel1">Pastel1</option>
+    <option value="Pastel2">Pastel2</option>
+    <option value="Set1">Set1</option>
+    <option value="Set2">Set2</option>
+    <option value="Set3">Set3</option>
+    <option value="Other1">Other1</option>
+    <option value="Other2">Other2</option>
+    <option value="Other3" selected="">Other3</option>
+    <option value="Other4">Other4</option>
+    <option value="Other5">Other5</option>
+    <option value="Other6">Other6</option>
+  </optgroup>
+</select>
+
+</div>
+<div id="example" class="parcoords" style="height:240px;">
+</div>
+<div id="grid"></div>
+<div id="pager"></div>
+<script id="brushing">
+
+
+
+var parcoords = d3.parcoords()("#example")
+    .alpha(0.4)
+    .mode("queue") // progressive rendering
+    .height(d3.max([document.body.clientHeight-326, 220]))
+    .margin({
+      top: 36,
+      left: 0,
+      right: 0,
+      bottom: 16
+    });
+
+// create chart from loaded data
+function parallelCoordinates(data) {
+  // slickgrid needs each data element to have an id
+  data.forEach(function(d,i) { d.id = d.id || i + 1; });
+  var column_keys = d3.keys(data[0]);
+  var columns = column_keys.map(function(key,i) {
+    return {
+      id: key,
+      name: key,
+      field: key,
+      sortable: true
+    }
+  });
+
+  var color_column = 0;
+  var color_min = d3.min(data, function(d) { return d[column_keys[color_column]];});
+  var color_max = d3.max(data, function(d) { return d[column_keys[color_column]];});
+
+  var colorscale = d3.scale.quantize()
+  .domain([color_min, color_max])
+  .range(colorbrewer[$("#colormap").val()][8]);
+
+  var color = function(d) { return colorscale(d[column_keys[color_column]]); };
+
+
+  parcoords
+    .data(data)
+    .color(color)
+    .render()
+    .reorderable()
+    .brushMode("1D-axes");
+
+  // setting up grid
+  
+
+  var options = {
+    enableCellNavigation: true,
+    enableColumnReorder: false,
+    multiColumnSort: false
+  };
+
+  var dataView = new Slick.Data.DataView();
+  var grid = new Slick.Grid("#grid", dataView, columns, options);
+  var pager = new Slick.Controls.Pager(dataView, grid, $("#pager"));
+
+  // wire up model events to drive the grid
+  dataView.onRowCountChanged.subscribe(function (e, args) {
+    grid.updateRowCount();
+    grid.render();
+  });
+
+  dataView.onRowsChanged.subscribe(function (e, args) {
+    grid.invalidateRows(args.rows);
+    grid.render();
+  });
+
+  // column sorting
+  var sortcol = column_keys[0];
+  var sortdir = 1;
+
+  function comparer(a, b) {
+    var x = a[sortcol], y = b[sortcol];
+    return (x == y ? 0 : (x > y ? 1 : -1));
+  }
+  
+  // click header to sort grid column
+  grid.onSort.subscribe(function (e, args) {
+    sortdir = args.sortAsc ? 1 : -1;
+    sortcol = args.sortCol.field;
+
+    if ($.browser.msie && $.browser.version <= 8) {
+      dataView.fastSort(sortcol, args.sortAsc);
+    } else {
+      dataView.sort(comparer, args.sortAsc);
+    }
+  });
+
+  // highlight row in chart
+  grid.onMouseEnter.subscribe(function(e,args) {
+    var i = grid.getCellFromEvent(e).row;
+    var d = parcoords.brushed() || data;
+    parcoords.highlight([d[i]]);
+  });
+  grid.onMouseLeave.subscribe(function(e,args) {
+    parcoords.unhighlight();
+  });
+
+  // fill grid with data
+  gridUpdate(data);
+
+  // update grid on brush
+  parcoords.on("brush", function(d) {
+    gridUpdate(d);
+  });
+
+  function gridUpdate(data) {
+    dataView.beginUpdate();
+    dataView.setItems(data);
+    dataView.endUpdate();
+  };
+
+};
+
+// CSV Uploader
+var uploader = document.getElementById("uploader");  
+var reader = new FileReader();
+
+reader.onload = function(e) {
+  var contents = e.target.result;
+  var data = d3.csv.parse(contents);
+
+  parallelCoordinates(data);
+
+  // remove button and other things, since re-initializing doesn't work for now
+  uploader.parentNode.removeChild(uploader);
+
+  var instructions = document.getElementById("instructions");
+  instructions.parentNode.removeChild(instructions);
+
+  var selectColors = document.getElementById("selectColors");
+  selectColors.parentNode.removeChild(selectColors);
+};
+
+uploader.addEventListener("change", handleFiles, false);  
+
+function handleFiles() {
+  var file = this.files[0];
+  reader.readAsText(file);
+};
+
+
+
+
+var sltBrushMode = d3.select('#sltBrushMode')
+
+sltBrushMode.selectAll('option')
+  .data(parcoords.brushModes())
+  .enter()
+    .append('option')
+    .text(function(d) { return d; });
+
+sltBrushMode.on('change', function() {
+  parcoords.brushMode(this.value);
+  switch(this.value) {
+  case 'None':
+    d3.select("#pStrums").style("visibility", "hidden");
+    d3.select("#lblPredicate").style("visibility", "hidden");
+    d3.select("#sltPredicate").style("visibility", "hidden");
+    d3.select("#btnReset").style("visibility", "hidden");
+    break;
+  case '2D-strums':
+    d3.select("#pStrums").style("visibility", "visible");
+    break;
+  default:
+    d3.select("#pStrums").style("visibility", "hidden");
+    d3.select("#lblPredicate").style("visibility", "visible");
+    d3.select("#sltPredicate").style("visibility", "visible");
+    d3.select("#btnReset").style("visibility", "visible");
+    break;
+  }
+});
+
+sltBrushMode.property('value', '1D-axes');
+
+d3.select('#btnReset').on('click', function() {parcoords.brushReset();})
+d3.select('#sltPredicate').on('change', function() {
+  parcoords.brushPredicate(this.value);
+});
+
+</script>
